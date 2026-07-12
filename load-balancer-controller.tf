@@ -44,25 +44,13 @@ resource "aws_iam_role" "controller" {
   assume_role_policy = data.aws_iam_policy_document.controller_assume_role.json
 }
 
-data "http" "controller_iam_policy" {
-  url = "https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v${var.load_balancer_controller_version}/docs/install/iam_policy.json"
-
-  request_headers = {
-    Accept = "application/json"
-  }
-}
-
-resource "aws_iam_policy" "controller" {
-  provider = aws.untagged
-
-  name        = "AWSLoadBalancerControllerIAMPolicy"
-  description = "Official IAM policy for AWS Load Balancer Controller ${var.load_balancer_controller_version}"
-  policy      = data.http.controller_iam_policy.response_body
+data "aws_iam_policy" "controller" {
+  arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/AWSLoadBalancerControllerIAMPolicy"
 }
 
 resource "aws_iam_role_policy_attachment" "controller" {
   role       = aws_iam_role.controller.name
-  policy_arn = aws_iam_policy.controller.arn
+  policy_arn = data.aws_iam_policy.controller.arn
 }
 
 resource "helm_release" "controller" {

@@ -13,10 +13,6 @@ terraform {
       source  = "hashicorp/helm"
       version = "~> 2.17"
     }
-    http = {
-      source  = "hashicorp/http"
-      version = "~> 3.0"
-    }
     local = {
       source  = "hashicorp/local"
       version = "~> 2.0"
@@ -34,14 +30,6 @@ provider "aws" {
   default_tags {
     tags = var.tags
   }
-}
-
-# KodeKloud permits creating the controller policy but denies iam:TagPolicy.
-# Use this provider only for that policy so provider-level default tags are not
-# sent as part of the CreatePolicy request.
-provider "aws" {
-  alias  = "untagged"
-  region = var.aws_region
 }
 
 provider "helm" {

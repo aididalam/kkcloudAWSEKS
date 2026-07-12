@@ -4,7 +4,7 @@ set -Eeuo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REGION="${AWS_REGION:-us-east-1}"
 
-for command_name in aws kubectl terraform; do
+for command_name in aws curl kubectl terraform; do
   command -v "$command_name" >/dev/null || {
     echo "Missing required command: $command_name" >&2
     exit 1
@@ -40,6 +40,38 @@ echo "State:       $STATE"
 terraform -chdir="$ROOT" init -reconfigure -backend-config="path=$STATE"
 terraform -chdir="$ROOT" fmt -check
 terraform -chdir="$ROOT" validate
+
+# KodeKloud permits creating this policy but denies tagging and deleting it.
+# Bootstrap it without tags, then Terraform consumes it as a read-only data
+# source. Rebuilds in the same account reuse the existing policy.
+EXISTING_POLICY_ARN="$(aws iam list-policies \
+  --scope Local \
+  --query "Policies[?PolicyName=='AWSLoadBalancerControllerIAMPolicy'].Arn | [0]" \
+  --output text \
+  --no-cli-pager)"
+if [[ -z "$EXISTING_POLICY_ARN" || "$EXISTING_POLICY_ARN" == "None" ]]; then
+  POLICY_FILE="$(mktemp)"
+  trap 'rm -f "$POLICY_FILE"' EXIT
+  curl -fsSL \
+    "https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v3.4.1/docs/install/iam_policy.json" \
+    -o "$POLICY_FILE"
+  EXISTING_POLICY_ARN="$(aws iam create-policy \
+    --policy-name AWSLoadBalancerControllerIAMPolicy \
+    --description "Official IAM policy for AWS Load Balancer Controller 3.4.1" \
+    --policy-document "file://$POLICY_FILE" \
+    --query Policy.Arn \
+    --output text \
+    --no-cli-pager)"
+  echo "Created controller IAM policy: $EXISTING_POLICY_ARN"
+else
+  echo "Reusing controller IAM policy: $EXISTING_POLICY_ARN"
+fi
+
+# Migrate state produced by older project revisions that managed this policy.
+if terraform -chdir="$ROOT" state show -no-color aws_iam_policy.controller >/dev/null 2>&1; then
+  terraform -chdir="$ROOT" state rm aws_iam_policy.controller
+fi
+
 terraform -chdir="$ROOT" apply "$@"
 
 REGION="$(terraform -chdir="$ROOT" output -raw aws_region)"

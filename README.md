@@ -10,18 +10,38 @@ Terraform for creating a reusable KodeKloud AWS playground environment with:
 
 ## 1. Configure a fresh playground
 
-Export the credentials supplied by the new KodeKloud AWS playground:
+1. Sign in to the AWS Console with the username and password supplied by KodeKloud.
+2. Open **IAM → Users → your playground user → Security credentials**.
+3. Under **Access keys**, create an access key for CLI use and copy its access key ID and secret access key.
+4. Clear credentials exported by an older playground. Environment variables override credentials saved by `aws configure`, and a stale session token causes `InvalidClientTokenId`:
 
 ```bash
-export AWS_ACCESS_KEY_ID="..."
-export AWS_SECRET_ACCESS_KEY="..."
-export AWS_SESSION_TOKEN="..."
-export AWS_DEFAULT_REGION="us-east-1"
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+unset AWS_SECURITY_TOKEN AWS_PROFILE AWS_DEFAULT_PROFILE
+```
 
+5. Configure the AWS CLI with the newly created access key:
+
+```bash
+aws configure
+```
+
+Enter:
+
+```text
+AWS Access Key ID: <new access key ID>
+AWS Secret Access Key: <new secret access key>
+Default region name: us-east-1
+Default output format: json
+```
+
+6. Verify the configured identity:
+
+```bash
 aws sts get-caller-identity
 ```
 
-The identity command must return the new playground account before continuing.
+The identity command must return the new playground account and KodeKloud IAM user before continuing.
 
 ## 2. Create the cluster
 
@@ -56,9 +76,11 @@ ALB DNS propagation and target registration can take several minutes. The exampl
 Destroy everything before the three-hour playground expires:
 
 ```bash
-./destroy.sh
+./destroy.sh -auto-approve
 ```
 
-Expired credentials cannot delete resources. The destroy script removes ALB Ingress resources before uninstalling the controller to avoid orphaned load balancers.
+Omit `-auto-approve` if you want the script and Terraform confirmation prompts.
+
+Expired credentials cannot delete resources. The destroy script removes ALB Ingress resources before uninstalling the controller to avoid orphaned load balancers. KodeKloud denies direct deletion of the EKS access entry, so the script safely removes it from Terraform state and cluster deletion removes it automatically. KodeKloud also denies deleting the controller IAM policy; `deploy.sh` creates or reuses it as a playground bootstrap resource, and it disappears when KodeKloud reclaims the temporary account.
 
 This project follows the [KodeKloud self-managed EKS guide](https://github.com/kodekloudhub/certified-kubernetes-administrator-course/tree/master/managed-clusters/eks/console/docs).
