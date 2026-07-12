@@ -1,0 +1,8 @@
+.terraform/
+.terraform-account/
+terraform.tfstate
+terraform.tfstate.*
+*.tfplan
+*.pem
+.DS_Store
+

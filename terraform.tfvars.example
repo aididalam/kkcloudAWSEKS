@@ -1,0 +1,14 @@
+# Defaults intentionally match the KodeKloud EKS playground guide.
+aws_region         = "us-east-1"
+cluster_name       = "demo-eks"
+subnet_count       = 3
+node_count         = 3
+node_instance_type = "t3.medium"
+
+# Optional: pin an EKS version supported by the current playground account.
+# Leaving this unset lets EKS choose the current default.
+# kubernetes_version = "1.36"
+
+# For better API security, replace the default 0.0.0.0/0 with your current IP.
+# endpoint_public_access_cidrs = ["203.0.113.10/32"]
+
