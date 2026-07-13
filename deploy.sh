@@ -129,65 +129,6 @@ kubectl rollout status deployment/aws-load-balancer-controller -n kube-system --
 kubectl rollout status deployment/argocd-server -n argocd --timeout=10m
 kubectl rollout status statefulset/argocd-application-controller -n argocd --timeout=10m
 
-# Bidly GitOps is public, so Argo CD can read it without a repository secret.
-BIDLY_GITOPS_REPOSITORY="${BIDLY_GITOPS_REPOSITORY:-https://github.com/aididalam/bidly-argo-cd.git}"
-BIDLY_GITOPS_REVISION="${BIDLY_GITOPS_REVISION:-main}"
-kubectl delete secret -n argocd repo-bidly-argo-cd --ignore-not-found
-
-kubectl apply -f - <<EOF
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: bidly
-  namespace: argocd
-spec:
-  project: default
-  source:
-    repoURL: ${BIDLY_GITOPS_REPOSITORY}
-    targetRevision: ${BIDLY_GITOPS_REVISION}
-    path: .
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: bidly
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-      - CreateNamespace=false
-EOF
-
-for _ in {1..60}; do
-  BIDLY_SYNC_STATUS="$(kubectl get application -n argocd bidly -o jsonpath='{.status.sync.status}')"
-  BIDLY_HEALTH_STATUS="$(kubectl get application -n argocd bidly -o jsonpath='{.status.health.status}')"
-  if [[ "$BIDLY_SYNC_STATUS" == "Synced" && "$BIDLY_HEALTH_STATUS" == "Healthy" ]]; then
-    break
-  fi
-  sleep 5
-done
-
-[[ "$BIDLY_SYNC_STATUS" == "Synced" && "$BIDLY_HEALTH_STATUS" == "Healthy" ]] || {
-  echo "Bidly Argo CD application did not become Synced and Healthy." >&2
-  kubectl get application -n argocd bidly -o yaml >&2
-  exit 1
-}
-
-for deployment_name in mysql auth auction auth-frontend auction-frontend; do
-  kubectl rollout status "deployment/${deployment_name}" -n bidly --timeout=10m
-done
-kubectl wait --for=condition=complete --timeout=10m -n bidly job/mysql-init
-
-BIDLY_ALB_HOST="$(kubectl get ingress -n bidly bidly -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
-[[ -n "$BIDLY_ALB_HOST" ]] || {
-  echo "Bidly ALB address was not assigned." >&2
-  exit 1
-}
-for bidly_path in / /auth/ /api/products; do
-  curl --fail --silent --show-error --retry 30 --retry-delay 5 --retry-connrefused \
-    "http://${BIDLY_ALB_HOST}${bidly_path}" >/dev/null
-done
-
-echo "Cluster is ready. Argo CD and the Bidly application are Synced and Healthy."
+echo "Cluster is ready. Argo CD is installed; no Argo CD Application is created by Terraform."
 echo "Argo CD login: admin / password"
 echo "Argo CD ALB: kubectl -n argocd get ingress argocd"
-echo "Bidly ALB: http://${BIDLY_ALB_HOST}"

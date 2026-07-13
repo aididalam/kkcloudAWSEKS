@@ -75,7 +75,7 @@ ALB DNS propagation and target registration can take several minutes. The exampl
 
 ## 4. Bidly platform bootstrap
 
-`./deploy.sh -auto-approve` installs Argo CD, creates the `bidly` namespace and runtime secrets, prepares S3 access through IRSA, and creates the automated Argo CD Application from the public `bidly-argo-cd` GitOps repository. No GitHub token is required.
+`./deploy.sh -auto-approve` installs Argo CD, creates the `bidly` namespace and runtime secrets, and prepares S3 access through IRSA. It does not create an Argo CD Application or deploy Bidly workloads.
 
 Access Argo CD locally:
 
@@ -91,7 +91,7 @@ kubectl -n argocd get ingress argocd
 
 Sign in with username `admin` and password `password`.
 
-The application deploys from the `main` branch of `aididalam/bidly-argo-cd`, waits until Argo reports `Synced` and `Healthy`, then verifies the Bidly ALB routes. The existing GitOps deployment remains unchanged; its `default` service account receives a dedicated, S3-scoped IRSA role.
+When you create the Bidly Argo CD Application yourself, use the public `aididalam/bidly-argo-cd` repository. The existing GitOps deployment remains unchanged; its `default` service account already receives a dedicated, S3-scoped IRSA role. Do not provide static AWS access keys.
 
 ## 5. Clean up
 
