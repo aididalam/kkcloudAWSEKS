@@ -167,6 +167,9 @@ resource "helm_release" "argocd" {
   values = [
     yamlencode({
       configs = {
+        params = {
+          "server.insecure" = "true"
+        }
         secret = {
           argocdServerAdminPassword      = local.argocd_admin_password_bcrypt
           argocdServerAdminPasswordMtime = "2026-07-13T00:00:00Z"
@@ -183,9 +186,9 @@ resource "kubernetes_ingress_v1" "argocd" {
     name      = "argocd"
     namespace = helm_release.argocd.namespace
     annotations = {
-      "alb.ingress.kubernetes.io/backend-protocol"     = "HTTPS"
+      "alb.ingress.kubernetes.io/backend-protocol"     = "HTTP"
       "alb.ingress.kubernetes.io/healthcheck-path"     = "/healthz"
-      "alb.ingress.kubernetes.io/healthcheck-protocol" = "HTTPS"
+      "alb.ingress.kubernetes.io/healthcheck-protocol" = "HTTP"
       "alb.ingress.kubernetes.io/load-balancer-name"   = "argocd"
       "alb.ingress.kubernetes.io/scheme"               = "internet-facing"
       "alb.ingress.kubernetes.io/success-codes"        = "200"
@@ -207,7 +210,7 @@ resource "kubernetes_ingress_v1" "argocd" {
               name = "argocd-server"
 
               port {
-                name = "https"
+                name = "http"
               }
             }
           }
