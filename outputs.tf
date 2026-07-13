@@ -45,3 +45,44 @@ output "configure_kubectl" {
 output "application_ingress_requirements" {
   value = "Use ingressClassName: alb. The controller defaults to target-type ip, so a ClusterIP Service is sufficient."
 }
+
+output "argocd_namespace" {
+  value = helm_release.argocd.namespace
+}
+
+output "argocd_port_forward" {
+  value = "kubectl -n ${helm_release.argocd.namespace} port-forward svc/argocd-server 8080:443"
+}
+
+output "argocd_admin_username" {
+  value = "admin"
+}
+
+output "argocd_admin_password" {
+  value     = "password"
+  sensitive = true
+}
+
+output "argocd_alb_address_command" {
+  value = "kubectl -n ${helm_release.argocd.namespace} get ingress argocd -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'"
+}
+
+output "bidly_s3_bucket" {
+  value = aws_s3_bucket.bidly.bucket
+}
+
+output "bidly_s3_public_base_url" {
+  value = local.bidly_s3_public_base_url
+}
+
+output "bidly_auction_s3_role_arn" {
+  value = aws_iam_role.bidly_auction.arn
+}
+
+output "bidly_auction_service_account" {
+  value = "${kubernetes_namespace_v1.bidly.metadata[0].name}/${kubernetes_service_account_v1.bidly_auction.metadata[0].name}"
+}
+
+output "bidly_s3_config_map" {
+  value = "${kubernetes_namespace_v1.bidly.metadata[0].name}/${kubernetes_config_map_v1.bidly_s3.metadata[0].name}"
+}

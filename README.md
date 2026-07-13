@@ -7,6 +7,8 @@ Terraform for creating a reusable KodeKloud AWS playground environment with:
 - dynamic default-VPC and public-subnet discovery
 - required IAM and security-group resources
 - AWS Load Balancer Controller using pod-IP targets
+- Argo CD installed with Helm
+- a Bidly S3 image bucket and scoped EKS pod access through IRSA
 
 ## 1. Configure a fresh playground
 
@@ -71,7 +73,27 @@ curl "http://${ALB_DNS}/hello"
 
 ALB DNS propagation and target registration can take several minutes. The example routes `/hello` to nginx through an ALB URL rewrite.
 
-## 4. Clean up
+## 4. Bidly platform bootstrap
+
+Terraform installs Argo CD, creates the `bidly` namespace, and prepares the auction API to access the generated S3 bucket through IRSA. It does not create an Argo CD Application or deploy Bidly workloads.
+
+Access Argo CD locally:
+
+```bash
+kubectl -n argocd port-forward svc/argocd-server 8080:443
+```
+
+Argo CD is also exposed through a public ALB. Get its hostname with:
+
+```bash
+kubectl -n argocd get ingress argocd
+```
+
+Sign in with username `admin` and password `password`.
+
+When you create the Bidly Argo CD Application yourself, configure the auction Deployment to use service account `auction-s3` and ConfigMap `bidly-s3` in the `bidly` namespace. Do not provide static AWS access keys; IRSA supplies temporary credentials automatically.
+
+## 5. Clean up
 
 Destroy everything before the three-hour playground expires:
 
@@ -81,6 +103,6 @@ Destroy everything before the three-hour playground expires:
 
 Omit `-auto-approve` if you want the script and Terraform confirmation prompts.
 
-Expired credentials cannot delete resources. The destroy script removes ALB Ingress resources before uninstalling the controller to avoid orphaned load balancers. KodeKloud denies direct deletion of the EKS access entry, so the script safely removes it from Terraform state and cluster deletion removes it automatically. KodeKloud also denies deleting the controller IAM policy; `deploy.sh` creates or reuses it as a playground bootstrap resource, and it disappears when KodeKloud reclaims the temporary account.
+Expired credentials cannot delete resources. The destroy script removes ALB Ingress resources before uninstalling the controller to avoid orphaned load balancers. KodeKloud denies direct deletion of the EKS access entry, so the script safely removes it from Terraform state and cluster deletion removes it automatically. KodeKloud also denies deleting the controller and Bidly IAM policies; `deploy.sh` creates or reuses them as playground bootstrap resources, and they disappear when KodeKloud reclaims the temporary account.
 
 This project follows the [KodeKloud self-managed EKS guide](https://github.com/kodekloudhub/certified-kubernetes-administrator-course/tree/master/managed-clusters/eks/console/docs).

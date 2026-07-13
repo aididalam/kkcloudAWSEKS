@@ -85,6 +85,31 @@ variable "load_balancer_controller_version" {
   default     = "3.4.1"
 }
 
+variable "argocd_namespace" {
+  description = "Namespace where Terraform installs Argo CD."
+  type        = string
+  default     = "argocd"
+}
+
+variable "argocd_chart_version" {
+  description = "Pinned Argo CD Helm chart version."
+  type        = string
+  default     = "10.1.3"
+}
+
+variable "bidly_s3_bucket_name" {
+  description = "Optional globally unique bucket name. Null derives one from the AWS account and region."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
+variable "bidly_s3_allowed_origins" {
+  description = "Browser origins allowed to upload directly to the Bidly bucket through presigned URLs."
+  type        = set(string)
+  default     = ["*"]
+}
+
 variable "tags" {
   description = "Tags added to Terraform-managed AWS resources."
   type        = map(string)
@@ -93,4 +118,3 @@ variable "tags" {
     ManagedBy = "Terraform"
   }
 }
-

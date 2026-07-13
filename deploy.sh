@@ -67,6 +67,53 @@ else
   echo "Reusing controller IAM policy: $EXISTING_POLICY_ARN"
 fi
 
+# KodeKloud denies inline role policies and policy tagging. Create the scoped
+# Bidly S3 policy without tags, then attach it through Terraform as read-only
+# policy data. The temporary playground account removes it when it expires.
+BIDLY_BUCKET_NAME="${TF_VAR_bidly_s3_bucket_name:-bidly-auction-${ACCOUNT_ID}-${REGION}}"
+BIDLY_POLICY_NAME="BidlyAuctionBucketAccess"
+BIDLY_POLICY_ARN="$(aws iam list-policies \
+  --scope Local \
+  --query "Policies[?PolicyName=='${BIDLY_POLICY_NAME}'].Arn | [0]" \
+  --output text \
+  --no-cli-pager)"
+if [[ -z "$BIDLY_POLICY_ARN" || "$BIDLY_POLICY_ARN" == "None" ]]; then
+  BIDLY_POLICY_FILE="$(mktemp)"
+  cat >"$BIDLY_POLICY_FILE" <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::${BIDLY_BUCKET_NAME}"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:AbortMultipartUpload",
+        "s3:DeleteObject",
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": "arn:aws:s3:::${BIDLY_BUCKET_NAME}/*"
+    }
+  ]
+}
+EOF
+  BIDLY_POLICY_ARN="$(aws iam create-policy \
+    --policy-name "$BIDLY_POLICY_NAME" \
+    --description "Scoped S3 access for the Bidly auction service" \
+    --policy-document "file://$BIDLY_POLICY_FILE" \
+    --query Policy.Arn \
+    --output text \
+    --no-cli-pager)"
+  rm -f "$BIDLY_POLICY_FILE"
+  echo "Created Bidly S3 IAM policy: $BIDLY_POLICY_ARN"
+else
+  echo "Reusing Bidly S3 IAM policy: $BIDLY_POLICY_ARN"
+fi
+
 # Migrate state produced by older project revisions that managed this policy.
 if terraform -chdir="$ROOT" state show -no-color aws_iam_policy.controller >/dev/null 2>&1; then
   terraform -chdir="$ROOT" state rm aws_iam_policy.controller
@@ -79,5 +126,8 @@ CLUSTER_NAME="$(terraform -chdir="$ROOT" output -raw cluster_name)"
 aws eks update-kubeconfig --region "$REGION" --name "$CLUSTER_NAME"
 kubectl wait --for=condition=Ready nodes --all --timeout=10m
 kubectl rollout status deployment/aws-load-balancer-controller -n kube-system --timeout=10m
+kubectl rollout status deployment/argocd-server -n argocd --timeout=10m
 
-echo "Cluster is ready. Deploy an application with ingressClassName: alb."
+echo "Cluster is ready. Argo CD is installed, but no Argo CD Application is created by Terraform."
+echo "Argo CD login: admin / password"
+echo "Argo CD ALB: kubectl -n argocd get ingress argocd"
