@@ -75,7 +75,7 @@ ALB DNS propagation and target registration can take several minutes. The exampl
 
 ## 4. Bidly platform bootstrap
 
-Terraform installs Argo CD, creates the `bidly` namespace, and prepares the auction API to access the generated S3 bucket through IRSA. It does not create an Argo CD Application or deploy Bidly workloads.
+`./deploy.sh -auto-approve` installs Argo CD, creates the `bidly` namespace and runtime secrets, prepares S3 access through IRSA, registers the private `bidly-argo-cd` GitOps repository, and creates the automated `bidly` Argo CD Application. The script obtains a GitHub token from `gh auth token`; set `BIDLY_GITOPS_TOKEN` to use a different token.
 
 Access Argo CD locally:
 
@@ -91,7 +91,7 @@ kubectl -n argocd get ingress argocd
 
 Sign in with username `admin` and password `password`.
 
-When you create the Bidly Argo CD Application yourself, configure the auction Deployment to use service account `auction-s3` and ConfigMap `bidly-s3` in the `bidly` namespace. Do not provide static AWS access keys; IRSA supplies temporary credentials automatically.
+The application deploys from the `main` branch of `aididalam/bidly-argo-cd`, waits until Argo reports `Synced` and `Healthy`, then verifies the Bidly ALB routes. The existing GitOps deployment remains unchanged; its `default` service account receives a dedicated, S3-scoped IRSA role.
 
 ## 5. Clean up
 

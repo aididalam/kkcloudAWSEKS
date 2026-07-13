@@ -10,8 +10,10 @@ terraform {
       version = "~> 6.0"
     }
     helm = {
-      source  = "hashicorp/helm"
-      version = "~> 2.17"
+      source = "hashicorp/helm"
+      # helm_release v2 uses nested set {} blocks. Pin this exact release so
+      # terraform-ls and VS Code do not resolve the incompatible Helm v3 schema.
+      version = "2.17.0"
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
@@ -20,6 +22,10 @@ terraform {
     local = {
       source  = "hashicorp/local"
       version = "~> 2.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
     }
     tls = {
       source  = "hashicorp/tls"

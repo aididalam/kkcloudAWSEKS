@@ -5,12 +5,33 @@ locals {
   bidly_s3_bucket_name              = coalesce(var.bidly_s3_bucket_name, "bidly-auction-${data.aws_caller_identity.current.account_id}-${var.aws_region}")
   bidly_s3_public_base_url          = "https://${aws_s3_bucket.bidly.bucket}.s3.${var.aws_region}.amazonaws.com"
   bidly_auction_service_account_sub = "system:serviceaccount:${local.bidly_namespace}:${local.bidly_auction_service_account}"
+  bidly_default_service_account_sub = "system:serviceaccount:${local.bidly_namespace}:default"
   argocd_admin_password_bcrypt      = "$2a$10$lzmxF08dgFDDBCDhregzteKgNDt650XeV/NOG.ZsqJLqXmvjVqwmi"
 }
 
 resource "aws_s3_bucket" "bidly" {
   bucket        = local.bidly_s3_bucket_name
   force_destroy = true
+}
+
+resource "random_password" "bidly_mysql_root" {
+  length  = 32
+  special = false
+}
+
+resource "random_password" "bidly_auth_database" {
+  length  = 32
+  special = false
+}
+
+resource "random_password" "bidly_auction_database" {
+  length  = 32
+  special = false
+}
+
+resource "random_password" "bidly_jwt" {
+  length  = 48
+  special = false
 }
 
 resource "aws_s3_bucket_ownership_controls" "bidly" {
@@ -119,12 +140,109 @@ resource "aws_iam_role_policy_attachment" "bidly_auction_s3" {
   policy_arn = data.aws_iam_policy.bidly_auction_s3.arn
 }
 
+# KodeKloud permits creating roles but denies changing an existing role's trust
+# policy. The GitOps auction deployment uses the default service account, so it
+# receives this separate, equally scoped role without changing its manifest.
+data "aws_iam_policy_document" "bidly_default_assume_role" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.eks.arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${local.oidc_host}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${local.oidc_host}:sub"
+      values   = [local.bidly_default_service_account_sub]
+    }
+  }
+}
+
+resource "aws_iam_role" "bidly_default" {
+  name               = "BidlyAuctionDefaultS3Role"
+  assume_role_policy = data.aws_iam_policy_document.bidly_default_assume_role.json
+}
+
+resource "aws_iam_role_policy_attachment" "bidly_default_s3" {
+  role       = aws_iam_role.bidly_default.name
+  policy_arn = data.aws_iam_policy.bidly_auction_s3.arn
+}
+
 resource "kubernetes_namespace_v1" "bidly" {
   metadata {
     name = local.bidly_namespace
   }
 
   depends_on = [aws_eks_access_entry.nodes]
+}
+
+resource "kubernetes_secret_v1" "bidly_mysql" {
+  metadata {
+    name      = "bidly-mysql-secrets"
+    namespace = kubernetes_namespace_v1.bidly.metadata[0].name
+  }
+
+  data = {
+    "root-password"    = random_password.bidly_mysql_root.result
+    "auth-password"    = random_password.bidly_auth_database.result
+    "auction-password" = random_password.bidly_auction_database.result
+  }
+}
+
+resource "kubernetes_secret_v1" "bidly_auth" {
+  metadata {
+    name      = "bidly-auth-secrets"
+    namespace = kubernetes_namespace_v1.bidly.metadata[0].name
+  }
+
+  data = {
+    "database-url" = "auth_user:${random_password.bidly_auth_database.result}@tcp(mysql:3306)/auth_db?parseTime=true&loc=UTC&charset=utf8mb4&collation=utf8mb4_unicode_ci"
+    "jwt-secret"   = random_password.bidly_jwt.result
+  }
+}
+
+resource "kubernetes_secret_v1" "bidly_auction" {
+  metadata {
+    name      = "bidly-auction-secrets"
+    namespace = kubernetes_namespace_v1.bidly.metadata[0].name
+  }
+
+  data = {
+    "database-url"          = "auction_user:${random_password.bidly_auction_database.result}@tcp(mysql:3306)/auction_db?parseTime=true&loc=UTC&charset=utf8mb4&collation=utf8mb4_unicode_ci"
+    "jwt-secret"            = random_password.bidly_jwt.result
+    "aws-region"            = var.aws_region
+    "aws-access-key-id"     = ""
+    "aws-secret-access-key" = ""
+    "s3-bucket"             = aws_s3_bucket.bidly.bucket
+    "s3-endpoint"           = ""
+    "s3-public-base-url"    = local.bidly_s3_public_base_url
+  }
+}
+
+resource "kubernetes_annotations" "bidly_default_service_account" {
+  api_version = "v1"
+  kind        = "ServiceAccount"
+  force       = true
+
+  metadata {
+    name      = "default"
+    namespace = kubernetes_namespace_v1.bidly.metadata[0].name
+  }
+
+  annotations = {
+    "eks.amazonaws.com/role-arn" = aws_iam_role.bidly_default.arn
+  }
+
+  depends_on = [aws_iam_role_policy_attachment.bidly_default_s3]
 }
 
 resource "kubernetes_service_account_v1" "bidly_auction" {

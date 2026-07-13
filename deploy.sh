@@ -4,7 +4,7 @@ set -Eeuo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REGION="${AWS_REGION:-us-east-1}"
 
-for command_name in aws curl kubectl terraform; do
+for command_name in aws curl gh kubectl terraform; do
   command -v "$command_name" >/dev/null || {
     echo "Missing required command: $command_name" >&2
     exit 1
@@ -127,7 +127,82 @@ aws eks update-kubeconfig --region "$REGION" --name "$CLUSTER_NAME"
 kubectl wait --for=condition=Ready nodes --all --timeout=10m
 kubectl rollout status deployment/aws-load-balancer-controller -n kube-system --timeout=10m
 kubectl rollout status deployment/argocd-server -n argocd --timeout=10m
+kubectl rollout status statefulset/argocd-application-controller -n argocd --timeout=10m
 
-echo "Cluster is ready. Argo CD is installed, but no Argo CD Application is created by Terraform."
+# Register the private GitOps repository with Argo CD. The token is read from
+# GitHub CLI's authenticated session unless an explicit deployment token is set.
+BIDLY_GITOPS_REPOSITORY="${BIDLY_GITOPS_REPOSITORY:-https://github.com/aididalam/bidly-argo-cd.git}"
+BIDLY_GITOPS_REVISION="${BIDLY_GITOPS_REVISION:-main}"
+BIDLY_GITOPS_TOKEN="${BIDLY_GITOPS_TOKEN:-$(gh auth token)}"
+[[ -n "$BIDLY_GITOPS_TOKEN" ]] || {
+  echo "Set BIDLY_GITOPS_TOKEN or authenticate GitHub CLI with gh auth login." >&2
+  exit 1
+}
+
+kubectl create secret generic repo-bidly-argo-cd \
+  --namespace argocd \
+  --labels 'argocd.argoproj.io/secret-type=repository' \
+  --from-literal=type=git \
+  --from-literal=url="$BIDLY_GITOPS_REPOSITORY" \
+  --from-literal=username=x-access-token \
+  --from-literal=password="$BIDLY_GITOPS_TOKEN" \
+  --dry-run=client \
+  --output yaml | kubectl apply -f -
+
+kubectl apply -f - <<EOF
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: bidly
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: ${BIDLY_GITOPS_REPOSITORY}
+    targetRevision: ${BIDLY_GITOPS_REVISION}
+    path: .
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: bidly
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+EOF
+
+for _ in {1..60}; do
+  BIDLY_SYNC_STATUS="$(kubectl get application -n argocd bidly -o jsonpath='{.status.sync.status}')"
+  BIDLY_HEALTH_STATUS="$(kubectl get application -n argocd bidly -o jsonpath='{.status.health.status}')"
+  if [[ "$BIDLY_SYNC_STATUS" == "Synced" && "$BIDLY_HEALTH_STATUS" == "Healthy" ]]; then
+    break
+  fi
+  sleep 5
+done
+
+[[ "$BIDLY_SYNC_STATUS" == "Synced" && "$BIDLY_HEALTH_STATUS" == "Healthy" ]] || {
+  echo "Bidly Argo CD application did not become Synced and Healthy." >&2
+  kubectl get application -n argocd bidly -o yaml >&2
+  exit 1
+}
+
+for deployment_name in mysql auth auction auth-frontend auction-frontend; do
+  kubectl rollout status "deployment/${deployment_name}" -n bidly --timeout=10m
+done
+kubectl wait --for=condition=complete --timeout=10m -n bidly job/mysql-init
+
+BIDLY_ALB_HOST="$(kubectl get ingress -n bidly bidly -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
+[[ -n "$BIDLY_ALB_HOST" ]] || {
+  echo "Bidly ALB address was not assigned." >&2
+  exit 1
+}
+for bidly_path in / /auth/ /api/products; do
+  curl --fail --silent --show-error --retry 30 --retry-delay 5 --retry-connrefused \
+    "http://${BIDLY_ALB_HOST}${bidly_path}" >/dev/null
+done
+
+echo "Cluster is ready. Argo CD and the Bidly application are Synced and Healthy."
 echo "Argo CD login: admin / password"
 echo "Argo CD ALB: kubectl -n argocd get ingress argocd"
+echo "Bidly ALB: http://${BIDLY_ALB_HOST}"
