@@ -10,6 +10,10 @@ Terraform for creating a reusable KodeKloud AWS playground environment with:
 - Argo CD installed with Helm
 - a Bidly S3 image bucket and scoped EKS pod access through IRSA
 
+## Bidly
+
+[Bidly](https://github.com/aididalam/bidly) is the auction platform deployed from its own microservice repositories. This branch prepares the EKS infrastructure, Argo CD access, S3 bucket, and scoped IRSA access; it does not create the Bidly Argo CD Application or workloads.
+
 ## 1. Configure a fresh playground
 
 1. Sign in to the AWS Console with the username and password supplied by KodeKloud.
