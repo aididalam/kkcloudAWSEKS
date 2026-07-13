@@ -4,7 +4,7 @@ set -Eeuo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REGION="${AWS_REGION:-us-east-1}"
 
-for command_name in aws curl gh kubectl terraform; do
+for command_name in aws curl kubectl terraform; do
   command -v "$command_name" >/dev/null || {
     echo "Missing required command: $command_name" >&2
     exit 1
@@ -129,25 +129,10 @@ kubectl rollout status deployment/aws-load-balancer-controller -n kube-system --
 kubectl rollout status deployment/argocd-server -n argocd --timeout=10m
 kubectl rollout status statefulset/argocd-application-controller -n argocd --timeout=10m
 
-# Register the private GitOps repository with Argo CD. The token is read from
-# GitHub CLI's authenticated session unless an explicit deployment token is set.
+# Bidly GitOps is public, so Argo CD can read it without a repository secret.
 BIDLY_GITOPS_REPOSITORY="${BIDLY_GITOPS_REPOSITORY:-https://github.com/aididalam/bidly-argo-cd.git}"
 BIDLY_GITOPS_REVISION="${BIDLY_GITOPS_REVISION:-main}"
-BIDLY_GITOPS_TOKEN="${BIDLY_GITOPS_TOKEN:-$(gh auth token)}"
-[[ -n "$BIDLY_GITOPS_TOKEN" ]] || {
-  echo "Set BIDLY_GITOPS_TOKEN or authenticate GitHub CLI with gh auth login." >&2
-  exit 1
-}
-
-kubectl create secret generic repo-bidly-argo-cd \
-  --namespace argocd \
-  --labels 'argocd.argoproj.io/secret-type=repository' \
-  --from-literal=type=git \
-  --from-literal=url="$BIDLY_GITOPS_REPOSITORY" \
-  --from-literal=username=x-access-token \
-  --from-literal=password="$BIDLY_GITOPS_TOKEN" \
-  --dry-run=client \
-  --output yaml | kubectl apply -f -
+kubectl delete secret -n argocd repo-bidly-argo-cd --ignore-not-found
 
 kubectl apply -f - <<EOF
 apiVersion: argoproj.io/v1alpha1

@@ -75,7 +75,7 @@ ALB DNS propagation and target registration can take several minutes. The exampl
 
 ## 4. Bidly platform bootstrap
 
-`./deploy.sh -auto-approve` installs Argo CD, creates the `bidly` namespace and runtime secrets, prepares S3 access through IRSA, registers the private `bidly-argo-cd` GitOps repository, and creates the automated `bidly` Argo CD Application. The script obtains a GitHub token from `gh auth token`; set `BIDLY_GITOPS_TOKEN` to use a different token.
+`./deploy.sh -auto-approve` installs Argo CD, creates the `bidly` namespace and runtime secrets, prepares S3 access through IRSA, and creates the automated Argo CD Application from the public `bidly-argo-cd` GitOps repository. No GitHub token is required.
 
 Access Argo CD locally:
 
