@@ -86,3 +86,11 @@ output "bidly_auction_service_account" {
 output "bidly_s3_config_map" {
   value = "${kubernetes_namespace_v1.bidly.metadata[0].name}/${kubernetes_config_map_v1.bidly_s3.metadata[0].name}"
 }
+
+output "bidly_runtime_secrets" {
+  value = [
+    kubernetes_secret_v1.bidly_mysql.metadata[0].name,
+    kubernetes_secret_v1.bidly_auth.metadata[0].name,
+    kubernetes_secret_v1.bidly_auction.metadata[0].name,
+  ]
+}

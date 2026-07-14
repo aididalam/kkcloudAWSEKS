@@ -13,6 +13,26 @@ resource "aws_s3_bucket" "bidly" {
   force_destroy = true
 }
 
+resource "random_password" "bidly_mysql_root" {
+  length  = 32
+  special = false
+}
+
+resource "random_password" "bidly_auth_database" {
+  length  = 32
+  special = false
+}
+
+resource "random_password" "bidly_auction_database" {
+  length  = 32
+  special = false
+}
+
+resource "random_password" "bidly_jwt" {
+  length  = 48
+  special = false
+}
+
 resource "aws_s3_bucket_ownership_controls" "bidly" {
   bucket = aws_s3_bucket.bidly.id
 
@@ -125,6 +145,49 @@ resource "kubernetes_namespace_v1" "bidly" {
   }
 
   depends_on = [aws_eks_access_entry.nodes]
+}
+
+resource "kubernetes_secret_v1" "bidly_mysql" {
+  metadata {
+    name      = "bidly-mysql-secrets"
+    namespace = kubernetes_namespace_v1.bidly.metadata[0].name
+  }
+
+  data = {
+    "root-password"    = random_password.bidly_mysql_root.result
+    "auth-password"    = random_password.bidly_auth_database.result
+    "auction-password" = random_password.bidly_auction_database.result
+  }
+}
+
+resource "kubernetes_secret_v1" "bidly_auth" {
+  metadata {
+    name      = "bidly-auth-secrets"
+    namespace = kubernetes_namespace_v1.bidly.metadata[0].name
+  }
+
+  data = {
+    "database-url" = "auth_user:${random_password.bidly_auth_database.result}@tcp(mysql:3306)/auth_db?parseTime=true&loc=UTC&charset=utf8mb4&collation=utf8mb4_unicode_ci"
+    "jwt-secret"   = random_password.bidly_jwt.result
+  }
+}
+
+resource "kubernetes_secret_v1" "bidly_auction" {
+  metadata {
+    name      = "bidly-auction-secrets"
+    namespace = kubernetes_namespace_v1.bidly.metadata[0].name
+  }
+
+  data = {
+    "database-url"          = "auction_user:${random_password.bidly_auction_database.result}@tcp(mysql:3306)/auction_db?parseTime=true&loc=UTC&charset=utf8mb4&collation=utf8mb4_unicode_ci"
+    "jwt-secret"            = random_password.bidly_jwt.result
+    "aws-region"            = var.aws_region
+    "aws-access-key-id"     = ""
+    "aws-secret-access-key" = ""
+    "s3-bucket"             = aws_s3_bucket.bidly.bucket
+    "s3-endpoint"           = ""
+    "s3-public-base-url"    = local.bidly_s3_public_base_url
+  }
 }
 
 resource "kubernetes_service_account_v1" "bidly_auction" {

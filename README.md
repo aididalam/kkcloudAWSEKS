@@ -79,7 +79,7 @@ ALB DNS propagation and target registration can take several minutes. The exampl
 
 ## 4. Bidly platform bootstrap
 
-Terraform installs Argo CD, creates the `bidly` namespace, and prepares the auction API to access the generated S3 bucket through IRSA. It does not create an Argo CD Application or deploy Bidly workloads.
+Terraform installs Argo CD, creates the `bidly` namespace and the `bidly-mysql-secrets`, `bidly-auth-secrets`, and `bidly-auction-secrets` runtime Secrets, and prepares the auction API to access the generated S3 bucket through IRSA. It does not create an Argo CD Application or deploy Bidly workloads.
 
 Access Argo CD locally:
 
