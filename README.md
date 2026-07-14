@@ -95,7 +95,7 @@ kubectl -n argocd get ingress argocd
 
 Sign in with username `admin` and password `password`.
 
-When you create the Bidly Argo CD Application yourself, use the public `aididalam/bidly-argo-cd` repository. The `bidly-s3` ConfigMap provides `S3_PUBLIC_BASE_URL` for frontend runtime configuration. The Auction deployment uses service account `auction-s3`; do not provide static AWS access keys.
+When you create the Bidly Argo CD Application yourself, use the public `aididalam/bidly-argo-cd` repository and enable automated sync, prune, and self-heal. The `bidly-s3` ConfigMap provides `S3_PUBLIC_BASE_URL` for frontend runtime configuration. The Auction deployment uses service account `auction-s3`; do not provide static AWS access keys.
 
 ## 5. Clean up
 

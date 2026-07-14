@@ -76,7 +76,7 @@ output "bidly_s3_public_base_url" {
 }
 
 output "bidly_auction_s3_role_arn" {
-  value = aws_iam_role.bidly_default.arn
+  value = aws_iam_role.bidly_auction.arn
 }
 
 output "bidly_auction_service_account" {
