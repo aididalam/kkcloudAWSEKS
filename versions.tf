@@ -10,8 +10,10 @@ terraform {
       version = "~> 6.0"
     }
     helm = {
-      source  = "hashicorp/helm"
-      version = "~> 2.17"
+      source = "hashicorp/helm"
+      # Helm v2 uses kubernetes {} provider configuration and set {} release
+      # blocks. Pinning prevents terraform-ls from resolving Helm v3 schemas.
+      version = "2.17.0"
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
