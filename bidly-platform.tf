@@ -266,6 +266,7 @@ resource "kubernetes_config_map_v1" "bidly_s3" {
     "s3-bucket"          = aws_s3_bucket.bidly.bucket
     "s3-public-base-url" = local.bidly_s3_public_base_url
     "s3-use-path-style"  = "false"
+    "S3_PUBLIC_BASE_URL" = local.bidly_s3_public_base_url
   }
 }
 
