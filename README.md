@@ -95,7 +95,7 @@ kubectl -n argocd get ingress argocd
 
 Sign in with username `admin` and password `password`.
 
-When you create the Bidly Argo CD Application yourself, configure the auction Deployment to use service account `auction-s3` and ConfigMap `bidly-s3` in the `bidly` namespace. Do not provide static AWS access keys; IRSA supplies temporary credentials automatically.
+When you create the Bidly Argo CD Application yourself, configure the auction Deployment to use service account `auction-s3` and ConfigMap `bidly-s3` in the `bidly` namespace. The ConfigMap provides `S3_PUBLIC_BASE_URL` for frontend runtime configuration. Do not provide static AWS access keys; IRSA supplies temporary credentials automatically.
 
 ## 5. Clean up
 
