@@ -65,41 +65,37 @@ resource "helm_release" "controller" {
   timeout         = 1200
   wait            = true
 
-  set {
-    name  = "clusterName"
-    value = aws_eks_cluster.this.name
-  }
-
-  set {
-    name  = "region"
-    value = var.aws_region
-  }
-
-  set {
-    name  = "vpcId"
-    value = data.aws_vpc.default.id
-  }
-
-  set {
-    name  = "serviceAccount.create"
-    value = "true"
-  }
-
-  set {
-    name  = "serviceAccount.name"
-    value = local.controller_service_account
-  }
-
-  set {
-    name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-    value = aws_iam_role.controller.arn
-  }
-
-  # New Ingress resources use pod IPs unless explicitly overridden.
-  set {
-    name  = "defaultTargetType"
-    value = "ip"
-  }
+  set = [
+    {
+      name  = "clusterName"
+      value = aws_eks_cluster.this.name
+    },
+    {
+      name  = "region"
+      value = var.aws_region
+    },
+    {
+      name  = "vpcId"
+      value = data.aws_vpc.default.id
+    },
+    {
+      name  = "serviceAccount.create"
+      value = "true"
+    },
+    {
+      name  = "serviceAccount.name"
+      value = local.controller_service_account
+    },
+    {
+      name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
+      value = aws_iam_role.controller.arn
+    },
+    # New Ingress resources use pod IPs unless explicitly overridden.
+    {
+      name  = "defaultTargetType"
+      value = "ip"
+    },
+  ]
 
   depends_on = [
     aws_eks_access_entry.nodes,

@@ -10,10 +10,8 @@ terraform {
       version = "~> 6.0"
     }
     helm = {
-      source = "hashicorp/helm"
-      # helm_release v2 uses nested set {} blocks. Pin this exact release so
-      # terraform-ls and VS Code do not resolve the incompatible Helm v3 schema.
-      version = "2.17.0"
+      source  = "hashicorp/helm"
+      version = "~> 3.2"
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
@@ -43,11 +41,11 @@ provider "aws" {
 }
 
 provider "helm" {
-  kubernetes {
+  kubernetes = {
     host                   = aws_eks_cluster.this.endpoint
     cluster_ca_certificate = base64decode(aws_eks_cluster.this.certificate_authority[0].data)
 
-    exec {
+    exec = {
       api_version = "client.authentication.k8s.io/v1beta1"
       command     = "aws"
       args = [
