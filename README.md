@@ -12,7 +12,7 @@ Terraform for creating a reusable KodeKloud AWS playground environment with:
 
 ## Bidly
 
-[Bidly](https://github.com/aididalam/bidly) is the auction platform deployed from its own microservice repositories. This branch additionally prepares the Bidly MySQL and application secrets plus the IRSA role used by its workloads; creating the Argo CD Application and deploying Bidly remain manual steps.
+[Bidly](https://github.com/aididalam/bidly) is the auction platform deployed from its own microservice repositories. This branch prepares its MySQL and application secrets plus the IRSA role used by its workloads, then creates and synchronizes the Bidly Argo CD Application.
 
 ## 1. Configure a fresh playground
 
@@ -79,7 +79,7 @@ ALB DNS propagation and target registration can take several minutes. The exampl
 
 ## 4. Bidly platform bootstrap
 
-`./deploy.sh -auto-approve` installs Argo CD, creates the `bidly` namespace and runtime secrets, and prepares S3 access through IRSA. It does not create an Argo CD Application or deploy Bidly workloads.
+`./deploy.sh -auto-approve` installs Argo CD, creates the `bidly` namespace and runtime secrets, prepares S3 access through IRSA, and creates an automated Argo CD Application from [`aididalam/bidly-argo-cd`](https://github.com/aididalam/bidly-argo-cd). The script waits for the complete platform, then verifies five demo users, twenty listings, ten bids, and a demo image in S3.
 
 Access Argo CD locally:
 
@@ -95,7 +95,7 @@ kubectl -n argocd get ingress argocd
 
 Sign in with username `admin` and password `password`.
 
-When you create the Bidly Argo CD Application yourself, use the public `aididalam/bidly-argo-cd` repository and enable automated sync, prune, and self-heal. The `bidly-s3` ConfigMap provides `S3_PUBLIC_BASE_URL` for frontend runtime configuration. The Auction deployment uses service account `auction-s3`; do not provide static AWS access keys.
+The Argo CD Application tracks the `main` branch of the public `aididalam/bidly-argo-cd` repository with automated sync, prune, and self-heal. The `bidly-s3` ConfigMap provides `S3_PUBLIC_BASE_URL` for frontend runtime configuration. The Auction deployment uses service account `auction-s3`; do not provide static AWS access keys.
 
 ## 5. Clean up
 

@@ -129,6 +129,34 @@ kubectl rollout status deployment/aws-load-balancer-controller -n kube-system --
 kubectl rollout status deployment/argocd-server -n argocd --timeout=10m
 kubectl rollout status statefulset/argocd-application-controller -n argocd --timeout=10m
 
-echo "Cluster is ready. Argo CD is installed; no Argo CD Application is created by Terraform."
+# This branch is the complete Bidly deployment stage. Argo CD owns all Bidly
+# workloads; Terraform owns only the cluster and their runtime prerequisites.
+kubectl apply -f "$ROOT/examples/bidly-application.yaml"
+kubectl wait --for=jsonpath='{.status.sync.status}'=Synced application/bidly -n argocd --timeout=10m
+kubectl wait --for=jsonpath='{.status.health.status}'=Healthy application/bidly -n argocd --timeout=15m
+
+kubectl rollout status deployment/mysql -n bidly --timeout=10m
+kubectl wait --for=condition=complete job/mysql-init -n bidly --timeout=10m
+for deployment in auth auction auth-frontend auction-frontend; do
+  kubectl rollout status "deployment/$deployment" -n bidly --timeout=10m
+done
+
+mysql_query() {
+  kubectl exec deployment/mysql -n bidly -- sh -ec "mysql -uroot -p\"\$MYSQL_ROOT_PASSWORD\" -Nse \"$1\""
+}
+
+demo_users="$(mysql_query "SELECT COUNT(*) FROM auth_db.users WHERE email IN ('user1@bidly.com','user2@bidly.com','user3@bidly.com','user4@bidly.com','user5@bidly.com');")"
+demo_products="$(mysql_query "SELECT COUNT(*) FROM auction_db.products;")"
+demo_bids="$(mysql_query "SELECT COUNT(*) FROM auction_db.bids;")"
+[[ "$demo_users" == "5" && "$demo_products" == "20" && "$demo_bids" == "10" ]] || {
+  echo "Bidly demo seed verification failed (users=$demo_users products=$demo_products bids=$demo_bids)." >&2
+  exit 1
+}
+
+S3_BUCKET="$(terraform -chdir="$ROOT" output -raw bidly_s3_bucket)"
+aws s3api head-object --bucket "$S3_BUCKET" --key products/demo/listing-01.jpg --no-cli-pager >/dev/null
+
+echo "Bidly is deployed and verified (5 demo users, 20 listings, 10 bids, and seeded S3 images)."
 echo "Argo CD login: admin / password"
 echo "Argo CD ALB: kubectl -n argocd get ingress argocd"
+echo "Bidly ALB: kubectl -n bidly get ingress bidly"
