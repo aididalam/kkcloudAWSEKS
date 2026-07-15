@@ -13,17 +13,7 @@ resource "aws_s3_bucket" "bidly" {
   force_destroy = true
 }
 
-resource "random_password" "bidly_mysql_root" {
-  length  = 32
-  special = false
-}
-
-resource "random_password" "bidly_auth_database" {
-  length  = 32
-  special = false
-}
-
-resource "random_password" "bidly_auction_database" {
+resource "random_password" "bidly_rds" {
   length  = 32
   special = false
 }
@@ -31,6 +21,61 @@ resource "random_password" "bidly_auction_database" {
 resource "random_password" "bidly_jwt" {
   length  = 48
   special = false
+}
+
+# The selected default-VPC subnets span multiple Availability Zones. RDS keeps
+# a standby database in another one when multi_az is enabled.
+resource "aws_db_subnet_group" "bidly" {
+  name       = "bidly-rds"
+  subnet_ids = local.selected_subnet_ids
+
+  tags = {
+    Name = "bidly-rds"
+  }
+}
+
+resource "aws_security_group" "bidly_rds" {
+  name        = "bidly-rds"
+  description = "Permit MySQL only from Bidly EKS worker nodes"
+  vpc_id      = data.aws_vpc.default.id
+}
+
+resource "aws_vpc_security_group_ingress_rule" "bidly_rds_mysql" {
+  security_group_id            = aws_security_group.bidly_rds.id
+  referenced_security_group_id = aws_cloudformation_stack.nodes.outputs["NodeSecurityGroup"]
+  from_port                    = 3306
+  to_port                      = 3306
+  ip_protocol                  = "tcp"
+  description                  = "MySQL from EKS worker nodes"
+}
+
+resource "aws_db_instance" "bidly" {
+  identifier                   = "bidly-mysql"
+  engine                       = "mysql"
+  instance_class               = var.bidly_rds_instance_class
+  allocated_storage            = var.bidly_rds_allocated_storage
+  max_allocated_storage        = var.bidly_rds_max_allocated_storage
+  storage_type                 = "gp3"
+  storage_encrypted            = true
+  multi_az                     = true
+  db_name                      = "bidly"
+  username                     = "bidly_app"
+  password                     = random_password.bidly_rds.result
+  port                         = 3306
+  db_subnet_group_name         = aws_db_subnet_group.bidly.name
+  vpc_security_group_ids       = [aws_security_group.bidly_rds.id]
+  publicly_accessible          = false
+  backup_retention_period      = 1
+  auto_minor_version_upgrade   = true
+  apply_immediately            = true
+  skip_final_snapshot          = true
+  deletion_protection          = false
+  copy_tags_to_snapshot        = true
+  performance_insights_enabled = false
+
+  tags = {
+    Name = "bidly-mysql"
+  }
 }
 
 resource "aws_s3_bucket_ownership_controls" "bidly" {
@@ -147,19 +192,6 @@ resource "kubernetes_namespace_v1" "bidly" {
   depends_on = [aws_eks_access_entry.nodes]
 }
 
-resource "kubernetes_secret_v1" "bidly_mysql" {
-  metadata {
-    name      = "bidly-mysql-secrets"
-    namespace = kubernetes_namespace_v1.bidly.metadata[0].name
-  }
-
-  data = {
-    "root-password"    = random_password.bidly_mysql_root.result
-    "auth-password"    = random_password.bidly_auth_database.result
-    "auction-password" = random_password.bidly_auction_database.result
-  }
-}
-
 resource "kubernetes_secret_v1" "bidly_auth" {
   metadata {
     name      = "bidly-auth-secrets"
@@ -167,7 +199,7 @@ resource "kubernetes_secret_v1" "bidly_auth" {
   }
 
   data = {
-    "database-url" = "auth_user:${random_password.bidly_auth_database.result}@tcp(mysql:3306)/auth_db?parseTime=true&loc=UTC&charset=utf8mb4&collation=utf8mb4_unicode_ci"
+    "database-url" = "${aws_db_instance.bidly.username}:${random_password.bidly_rds.result}@tcp(${aws_db_instance.bidly.address}:3306)/bidly?parseTime=true&loc=UTC&charset=utf8mb4&collation=utf8mb4_unicode_ci"
     "jwt-secret"   = random_password.bidly_jwt.result
   }
 }
@@ -179,7 +211,7 @@ resource "kubernetes_secret_v1" "bidly_auction" {
   }
 
   data = {
-    "database-url"          = "auction_user:${random_password.bidly_auction_database.result}@tcp(mysql:3306)/auction_db?parseTime=true&loc=UTC&charset=utf8mb4&collation=utf8mb4_unicode_ci"
+    "database-url"          = "${aws_db_instance.bidly.username}:${random_password.bidly_rds.result}@tcp(${aws_db_instance.bidly.address}:3306)/bidly?parseTime=true&loc=UTC&charset=utf8mb4&collation=utf8mb4_unicode_ci"
     "jwt-secret"            = random_password.bidly_jwt.result
     "aws-region"            = var.aws_region
     "aws-access-key-id"     = ""

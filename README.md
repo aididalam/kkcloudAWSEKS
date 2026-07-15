@@ -9,6 +9,7 @@ Terraform for creating a reusable KodeKloud AWS playground environment with:
 - AWS Load Balancer Controller using pod-IP targets
 - Argo CD installed with Helm
 - a Bidly S3 image bucket and scoped EKS pod access through IRSA
+- a private, encrypted, Multi-AZ Amazon RDS for MySQL instance for Bidly
 
 ## Bidly
 
@@ -79,7 +80,7 @@ ALB DNS propagation and target registration can take several minutes. The exampl
 
 ## 4. Bidly platform bootstrap
 
-`./deploy.sh -auto-approve` installs Argo CD, creates the `bidly` namespace and runtime secrets, prepares S3 access through IRSA, and creates an automated Argo CD Application from [`aididalam/bidly-argo-cd`](https://github.com/aididalam/bidly-argo-cd). The script waits for the complete platform, then verifies five demo users, twenty listings, ten bids, and a demo image in S3.
+`./deploy.sh -auto-approve` installs Argo CD, creates the `bidly` namespace and runtime secrets, provisions a private encrypted Multi-AZ RDS for MySQL instance, prepares S3 access through IRSA, and creates an automated Argo CD Application from [`aididalam/bidly-argo-cd`](https://github.com/aididalam/bidly-argo-cd). The RDS security group permits port 3306 only from EKS worker nodes. The script waits for the complete platform, then verifies the running Auth and Auction APIs, their RDS-backed demo data, and a demo image in S3.
 
 Access Argo CD locally:
 

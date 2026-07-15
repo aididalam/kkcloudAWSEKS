@@ -129,34 +129,48 @@ kubectl rollout status deployment/aws-load-balancer-controller -n kube-system --
 kubectl rollout status deployment/argocd-server -n argocd --timeout=10m
 kubectl rollout status statefulset/argocd-application-controller -n argocd --timeout=10m
 
-# This branch is the complete Bidly deployment stage. Argo CD owns all Bidly
-# workloads; Terraform owns only the cluster and their runtime prerequisites.
+# This branch is the complete Bidly deployment stage. Terraform provisions the
+# private, Multi-AZ RDS database and runtime secrets; Argo CD owns workloads.
 kubectl apply -f "$ROOT/examples/bidly-application.yaml"
 kubectl wait --for=jsonpath='{.status.sync.status}'=Synced application/bidly -n argocd --timeout=10m
 kubectl wait --for=jsonpath='{.status.health.status}'=Healthy application/bidly -n argocd --timeout=15m
 
-kubectl rollout status deployment/mysql -n bidly --timeout=10m
-kubectl wait --for=condition=complete job/mysql-init -n bidly --timeout=10m
 for deployment in auth auction auth-frontend auction-frontend; do
+  # A running cluster can receive new RDS values through a Secret update.
+  # Restarting makes each container read the new DATABASE_URL from its Secret.
+  kubectl rollout restart "deployment/$deployment" -n bidly
   kubectl rollout status "deployment/$deployment" -n bidly --timeout=10m
 done
 
-mysql_query() {
-  kubectl exec deployment/mysql -n bidly -- sh -ec "mysql -uroot -p\"\$MYSQL_ROOT_PASSWORD\" -Nse \"$1\""
-}
-
-demo_users="$(mysql_query "SELECT COUNT(*) FROM auth_db.users WHERE email IN ('user1@bidly.com','user2@bidly.com','user3@bidly.com','user4@bidly.com','user5@bidly.com');")"
-demo_products="$(mysql_query "SELECT COUNT(*) FROM auction_db.products;")"
-demo_bids="$(mysql_query "SELECT COUNT(*) FROM auction_db.bids;")"
-[[ "$demo_users" == "5" && "$demo_products" == "20" && "$demo_bids" == "10" ]] || {
-  echo "Bidly demo seed verification failed (users=$demo_users products=$demo_products bids=$demo_bids)." >&2
-  exit 1
-}
+# Verify through the running APIs rather than connecting to RDS with a master
+# password. This proves EKS networking, RDS credentials, migrations, and demo
+# data together. The pod is deleted as soon as the check completes.
+kubectl run bidly-api-verifier \
+  --namespace bidly \
+  --rm \
+  --interactive \
+  --restart=Never \
+  --image=curlimages/curl:8.12.1 \
+  --command -- sh -ec '
+    set -eu
+    login="$(curl -fsS -X POST http://auth:8081/api/auth/login \
+      -H "Content-Type: application/json" \
+      --data "{\"email\":\"user1@bidly.com\",\"password\":\"password\"}")"
+    token="$(printf "%s" "$login" | sed -n "s/.*\"token\":\"\([^\"]*\)\".*/\1/p")"
+    [ -n "$token" ]
+    products="$(curl -fsS http://auction:8082/api/products)"
+    product_count="$(printf "%s" "$products" | grep -o "\"id\"" | wc -l | tr -d " ")"
+    [ "$product_count" = "20" ]
+    bids="$(curl -fsS http://auction:8082/api/products/a1000000-0000-4000-8000-000000000001/bids \
+      -H "Authorization: Bearer $token")"
+    bid_count="$(printf "%s" "$bids" | grep -o "\"id\"" | wc -l | tr -d " ")"
+    [ "$bid_count" = "2" ]
+  '
 
 S3_BUCKET="$(terraform -chdir="$ROOT" output -raw bidly_s3_bucket)"
 aws s3api head-object --bucket "$S3_BUCKET" --key products/demo/listing-01.jpg --no-cli-pager >/dev/null
 
-echo "Bidly is deployed and verified (5 demo users, 20 listings, 10 bids, and seeded S3 images)."
+echo "Bidly is deployed and verified with private Multi-AZ RDS, demo users, listings, bids, and seeded S3 images."
 echo "Argo CD login: admin / password"
 echo "Argo CD ALB: kubectl -n argocd get ingress argocd"
 echo "Bidly ALB: kubectl -n bidly get ingress bidly"

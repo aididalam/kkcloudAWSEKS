@@ -75,6 +75,21 @@ output "bidly_s3_public_base_url" {
   value = local.bidly_s3_public_base_url
 }
 
+output "bidly_rds_endpoint" {
+  description = "Private MySQL endpoint used by the Bidly application secrets."
+  value       = aws_db_instance.bidly.address
+}
+
+output "bidly_rds_database" {
+  description = "Initial database created by RDS for both Bidly services."
+  value       = aws_db_instance.bidly.db_name
+}
+
+output "bidly_rds_multi_az" {
+  description = "Whether the RDS standby is enabled in a second Availability Zone."
+  value       = aws_db_instance.bidly.multi_az
+}
+
 output "bidly_auction_s3_role_arn" {
   value = aws_iam_role.bidly_auction.arn
 }
@@ -89,7 +104,6 @@ output "bidly_s3_config_map" {
 
 output "bidly_runtime_secrets" {
   value = [
-    kubernetes_secret_v1.bidly_mysql.metadata[0].name,
     kubernetes_secret_v1.bidly_auth.metadata[0].name,
     kubernetes_secret_v1.bidly_auction.metadata[0].name,
   ]
