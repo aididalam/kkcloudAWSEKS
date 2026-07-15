@@ -9,10 +9,11 @@ Terraform for creating a reusable KodeKloud AWS playground environment with:
 - AWS Load Balancer Controller using pod-IP targets
 - Argo CD installed with Helm
 - a Bidly S3 image bucket and scoped EKS pod access through IRSA
+- a private, encrypted, Multi-AZ Amazon RDS for MySQL instance for Bidly
 
 ## Bidly
 
-[Bidly](https://github.com/aididalam/bidly) is the auction platform deployed from its own microservice repositories. This branch prepares the EKS infrastructure, Argo CD access, S3 bucket, and scoped IRSA access; it does not create the Bidly Argo CD Application or workloads.
+[Bidly](https://github.com/aididalam/bidly) is the auction platform deployed from its own microservice repositories. This branch prepares the EKS infrastructure, Argo CD access, private Multi-AZ RDS database, S3 bucket, and scoped IRSA access; it does not create the Bidly Argo CD Application or workloads.
 
 ## 1. Configure a fresh playground
 
@@ -79,7 +80,7 @@ ALB DNS propagation and target registration can take several minutes. The exampl
 
 ## 4. Bidly platform bootstrap
 
-Terraform installs Argo CD, creates the `bidly` namespace and the `bidly-mysql-secrets`, `bidly-auth-secrets`, and `bidly-auction-secrets` runtime Secrets, and prepares the auction API to access the generated S3 bucket through IRSA. It does not create an Argo CD Application or deploy Bidly workloads.
+Terraform installs Argo CD, provisions a private encrypted Multi-AZ RDS for MySQL instance, creates the `bidly` namespace and the RDS-backed `bidly-auth-secrets` and `bidly-auction-secrets` runtime Secrets, and prepares the auction API to access the generated S3 bucket through IRSA. The RDS security group permits port 3306 only from EKS worker nodes. It does not create an Argo CD Application or deploy Bidly workloads.
 
 Access Argo CD locally:
 

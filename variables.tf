@@ -110,6 +110,34 @@ variable "bidly_s3_allowed_origins" {
   default     = ["*"]
 }
 
+variable "bidly_rds_instance_class" {
+  description = "RDS instance class for the Bidly MySQL database."
+  type        = string
+  default     = "db.t3.micro"
+}
+
+variable "bidly_rds_allocated_storage" {
+  description = "Initial gp3 storage allocated to the Bidly RDS database in GiB."
+  type        = number
+  default     = 20
+
+  validation {
+    condition     = var.bidly_rds_allocated_storage >= 20
+    error_message = "bidly_rds_allocated_storage must be at least 20 GiB."
+  }
+}
+
+variable "bidly_rds_max_allocated_storage" {
+  description = "Maximum storage autoscaling limit for the Bidly RDS database in GiB."
+  type        = number
+  default     = 100
+
+  validation {
+    condition     = var.bidly_rds_max_allocated_storage >= var.bidly_rds_allocated_storage
+    error_message = "bidly_rds_max_allocated_storage must be greater than or equal to bidly_rds_allocated_storage."
+  }
+}
+
 variable "tags" {
   description = "Tags added to Terraform-managed AWS resources."
   type        = map(string)
