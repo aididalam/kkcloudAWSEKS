@@ -148,7 +148,7 @@ done
 kubectl run bidly-api-verifier \
   --namespace bidly \
   --rm \
-  --interactive \
+  --stdin \
   --restart=Never \
   --image=curlimages/curl:8.12.1 \
   --command -- sh -ec '
