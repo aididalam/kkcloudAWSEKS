@@ -10,10 +10,11 @@ Terraform for creating a reusable KodeKloud AWS playground environment with:
 - Argo CD installed with Helm
 - a Bidly S3 image bucket and scoped EKS pod access through IRSA
 - a private, encrypted, Multi-AZ Amazon RDS for MySQL instance for Bidly
+- Istio demo profile with Prometheus and Kiali, plus automatic Bidly sidecar injection
 
 ## Bidly
 
-[Bidly](https://github.com/aididalam/bidly) is the auction platform deployed from its own microservice repositories. This branch prepares its MySQL and application secrets plus the IRSA role used by its workloads, then creates and synchronizes the Bidly Argo CD Application.
+[Bidly](https://github.com/aididalam/bidly) is the auction platform deployed from its own microservice repositories. This branch creates its RDS-backed runtime secrets and IRSA role, synchronizes the Bidly Argo CD Application, then installs the Istio demo profile and observability add-ons.
 
 ## 1. Configure a fresh playground
 
@@ -98,7 +99,27 @@ Sign in with username `admin` and password `password`.
 
 The Argo CD Application tracks the `main` branch of the public `aididalam/bidly-argo-cd` repository with automated sync, prune, and self-heal. The `bidly-s3` ConfigMap provides `S3_PUBLIC_BASE_URL` for frontend runtime configuration. The Auction deployment uses service account `auction-s3`; do not provide static AWS access keys.
 
-## 5. Clean up
+## 5. Istio and Kiali
+
+This branch uses the Istio `demo` profile with the locally installed `istioctl`. It is tested with Istio `1.30.2`; use that client version when recreating the same environment. `deploy.sh` installs Istio, applies the official `release-1.30` Prometheus and Kiali manifests, labels the `bidly` namespace for injection, restarts the four Bidly deployments, and verifies that both replicas of each deployment contain `istio-proxy`. With Kubernetes native sidecars, that proxy can appear in the Pod's `initContainers` list with `restartPolicy: Always`; this is expected and still produces `2/2` readiness.
+
+Bidly remains publicly reachable through the existing AWS ALB Ingress. No Istio Gateway, VirtualService, or RDS ServiceEntry is created in this stage. RDS is an external database, so its traffic appears as `PassthroughCluster` in Kiali until a ServiceEntry is deliberately added.
+
+Open Kiali from your local machine:
+
+```bash
+istioctl dashboard kiali
+```
+
+Useful mesh checks:
+
+```bash
+kubectl get pods -n bidly
+istioctl proxy-status
+istioctl analyze -n bidly
+```
+
+## 6. Clean up
 
 Destroy everything before the three-hour playground expires:
 

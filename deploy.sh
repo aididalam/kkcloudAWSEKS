@@ -3,8 +3,10 @@ set -Eeuo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REGION="${AWS_REGION:-us-east-1}"
+ISTIO_PROFILE="demo"
+ISTIO_ADDONS_RELEASE="1.30"
 
-for command_name in aws curl kubectl terraform; do
+for command_name in aws curl kubectl terraform istioctl; do
   command -v "$command_name" >/dev/null || {
     echo "Missing required command: $command_name" >&2
     exit 1
@@ -151,6 +153,7 @@ kubectl run bidly-api-verifier \
   --stdin \
   --restart=Never \
   --image=curlimages/curl:8.12.1 \
+  --overrides='{"apiVersion":"v1","metadata":{"annotations":{"sidecar.istio.io/inject":"false"}}}' \
   --command -- sh -ec '
     set -eu
     login="$(curl -fsS -X POST http://auth:8081/api/auth/login \
@@ -170,7 +173,44 @@ kubectl run bidly-api-verifier \
 S3_BUCKET="$(terraform -chdir="$ROOT" output -raw bidly_s3_bucket)"
 aws s3api head-object --bucket "$S3_BUCKET" --key products/demo/listing-01.jpg --no-cli-pager >/dev/null
 
-echo "Bidly is deployed and verified with private Multi-AZ RDS, demo users, listings, bids, and seeded S3 images."
+# Keep the base deployment verification independent from the mesh. The explicit
+# opt-out above also makes subsequent deploy.sh runs safe after the namespace
+# is injection-enabled.
+istioctl install --set "profile=${ISTIO_PROFILE}" -y
+kubectl rollout status deployment/istiod -n istio-system --timeout=10m
+kubectl rollout status deployment/istio-ingressgateway -n istio-system --timeout=10m
+kubectl rollout status deployment/istio-egressgateway -n istio-system --timeout=10m
+
+ISTIO_ADDONS_BASE="https://raw.githubusercontent.com/istio/istio/release-${ISTIO_ADDONS_RELEASE}/samples/addons"
+kubectl apply -f "${ISTIO_ADDONS_BASE}/prometheus.yaml"
+kubectl apply -f "${ISTIO_ADDONS_BASE}/kiali.yaml"
+kubectl rollout status deployment/prometheus -n istio-system --timeout=10m
+kubectl rollout status deployment/kiali -n istio-system --timeout=10m
+
+# The existing ALB Ingress remains Bidly's public entry point. This label makes
+# only application pods part of the mesh; the RDS database stays external.
+kubectl label namespace bidly istio-injection=enabled --overwrite
+for deployment in auth auction auth-frontend auction-frontend; do
+  kubectl rollout restart "deployment/$deployment" -n bidly
+  kubectl rollout status "deployment/$deployment" -n bidly --timeout=10m
+
+  pod_count="$(kubectl get pods -n bidly \
+    -l "app.kubernetes.io/name=${deployment}" \
+    -o jsonpath='{.items[*].metadata.name}' | wc -w | tr -d ' ')"
+  proxy_count="$(kubectl get pods -n bidly \
+    -l "app.kubernetes.io/name=${deployment}" \
+    -o jsonpath='{range .items[*]}{range .spec.initContainers[*]}{.name}{"\n"}{end}{range .spec.containers[*]}{.name}{"\n"}{end}{end}' \
+    | grep -cx 'istio-proxy' || true)"
+  [[ "$pod_count" -eq 2 && "$proxy_count" -eq 2 ]] || {
+    echo "Istio sidecar verification failed for deployment/${deployment}: ${proxy_count}/${pod_count} pods have istio-proxy." >&2
+    exit 1
+  }
+done
+
+istioctl proxy-status
+
+echo "Bidly is deployed and verified with private Multi-AZ RDS, demo users, listings, bids, seeded S3 images, and Istio sidecars."
 echo "Argo CD login: admin / password"
 echo "Argo CD ALB: kubectl -n argocd get ingress argocd"
 echo "Bidly ALB: kubectl -n bidly get ingress bidly"
+echo "Kiali dashboard: istioctl dashboard kiali"
