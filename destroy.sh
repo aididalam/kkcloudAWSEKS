@@ -51,16 +51,37 @@ CLUSTER_NAME="${CLUSTER_NAME:-${CLUSTER_NAME_OVERRIDE:-demo-eks}}"
 if aws eks describe-cluster --region "$REGION" --name "$CLUSTER_NAME" --no-cli-pager >/dev/null 2>&1; then
   aws eks update-kubeconfig --region "$REGION" --name "$CLUSTER_NAME"
 
+  # The Bidly application is created imperatively by deploy.sh rather than by
+  # Terraform. Remove it first so Argo CD cannot self-heal workloads or their
+  # Ingress while this script is tearing down the cluster.
+  if kubectl get namespace argocd >/dev/null 2>&1; then
+    kubectl delete application bidly -n argocd \
+      --ignore-not-found \
+      --wait=true \
+      --timeout=10m
+  fi
+
   # Ingress resources must be removed while the controller is still running,
   # or their AWS ALBs can be orphaned when the cluster is destroyed.
   while read -r namespace ingress_name; do
     [[ -n "${namespace:-}" && -n "${ingress_name:-}" ]] || continue
-    kubectl delete ingress "$ingress_name" -n "$namespace" --timeout=10m
+    kubectl delete ingress "$ingress_name" -n "$namespace" \
+      --wait=true \
+      --timeout=10m
   done < <(
     kubectl get ingress -A \
       -o go-template='{{range .items}}{{if eq .spec.ingressClassName "alb"}}{{.metadata.namespace}} {{.metadata.name}}{{"\n"}}{{end}}{{end}}' \
       2>/dev/null || true
   )
+
+  # Istio's demo profile creates this LoadBalancer Service. Delete it before
+  # deleting EKS so a provisioned gateway load balancer cannot be orphaned.
+  if kubectl get namespace istio-system >/dev/null 2>&1; then
+    kubectl delete service istio-ingressgateway -n istio-system \
+      --ignore-not-found \
+      --wait=true \
+      --timeout=10m
+  fi
 else
   echo "EKS cluster $CLUSTER_NAME is already absent; skipping Kubernetes cleanup."
 fi
